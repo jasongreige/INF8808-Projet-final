@@ -1,0 +1,5 @@
+dash
+pandas
+flask
+flask_failsafe
+openpyxl
