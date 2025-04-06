@@ -2,53 +2,58 @@ import pandas as pd
 import plotly.express as px
 from dash import dcc, html, Input, Output, callback
 
-# Charger les données depuis Excel
+# ----------------------------------------------------------------
+# 1. Data Loading and Processing
+# ----------------------------------------------------------------
+
 file_path = "data/L1QC.xlsx"
 df_matchs = pd.read_excel(file_path, sheet_name="matchs")
-df_teams = pd.read_excel(file_path, sheet_name="teams")  # Charger les noms des équipes
+df_teams = pd.read_excel(file_path, sheet_name="teams")
 
-# Associer les noms des équipes aux stats
-df_matchs = df_matchs.merge(df_teams[['id', 'name']], left_on='team_id', right_on='id', how='left')
-
-# Calculer la possession
-df_matchs['possession'] = (
-    df_matchs['passes_bwd_successful'] + df_matchs['passes_fwd_successful'] +
-    df_matchs['passes_left_successful'] + df_matchs['passes_right_successful']
-) / (
-    df_matchs['passes_right'] + df_matchs['passes_fwd'] +
-    df_matchs['passes_bwd'] + df_matchs['passes_left']
+# Merge team names into df_matchs
+df_matchs = df_matchs.merge(
+    df_teams[['id', 'name']],
+    left_on='team_id',
+    right_on='id',
+    how='left'
 )
 
-# Nettoyer la colonne 'goals_for'
+# Calculate possession
+df_matchs['possession'] = (
+    df_matchs['passes_bwd_successful'] + df_matchs['passes_fwd_successful']
+    + df_matchs['passes_left_successful'] + df_matchs['passes_right_successful']
+) / (
+    df_matchs['passes_right'] + df_matchs['passes_fwd']
+    + df_matchs['passes_bwd'] + df_matchs['passes_left']
+)
+
+# Convert 'goals_for' from string "x;x;x" to an integer count
 def count_goals(goals_str):
     if isinstance(goals_str, str):
         return len(goals_str.split(";"))
     return 0
-
 df_matchs['goals_for'] = df_matchs['goals_for'].apply(count_goals)
 
-# Fonction pour compter les cartons dans les colonnes `yellow_cards_for` et `red_cards_for`
+# Count cards
 def count_cards(card_str):
     if isinstance(card_str, str):
         return len(card_str.split(";"))
     return 0
-
 df_matchs['yellow_cards_for'] = df_matchs['yellow_cards_for'].apply(count_cards)
 df_matchs['red_cards_for'] = df_matchs['red_cards_for'].apply(count_cards)
-
-# Ajouter la colonne `total_cards`
 df_matchs['total_cards'] = df_matchs['yellow_cards_for'] + df_matchs['red_cards_for']
 
-# Convertir les colonnes en nombres
-numeric_columns = ['shots', 'goals_for', 'possession', 'fouls_committed',
-                   'yellow_cards_for', 'red_cards_for', 'tackles_committed', 'goals_against',
-                   'total_cards', 'passes_fwd', 'passes_bwd', 'aerial_challenges', 'aerial_challenges_successful']
-
+# Convert numeric columns
+numeric_columns = [
+    'shots', 'goals_for', 'possession', 'fouls_committed',
+    'yellow_cards_for', 'red_cards_for', 'tackles_committed',
+    'goals_against', 'total_cards', 'passes_fwd', 'passes_bwd',
+    'aerial_challenges', 'aerial_challenges_successful'
+]
 for col in numeric_columns:
-    df_matchs[col] = pd.to_numeric(df_matchs[col], errors='coerce')
-    df_matchs[col] = df_matchs[col].fillna(0)
+    df_matchs[col] = pd.to_numeric(df_matchs[col], errors='coerce').fillna(0)
 
-# Agréger les statistiques par équipe
+# Aggregate stats by team
 df_team_stats = df_matchs.groupby(['team_id', 'name']).agg({
     'shots': 'sum',
     'goals_for': 'sum',
@@ -65,34 +70,35 @@ df_team_stats = df_matchs.groupby(['team_id', 'name']).agg({
     'aerial_challenges_successful': 'sum'
 }).reset_index()
 
-# Convertir team_id en int
 df_team_stats['team_id'] = df_team_stats['team_id'].astype(int)
 
-# Liste des équipes pour le menu déroulant
+# Prepare dropdown options
 team_options = [{'label': "Aucune sélection", 'value': None}] + [
-    {'label': name, 'value': int(team_id)} for team_id, name in zip(df_team_stats['team_id'], df_team_stats['name'])
+    {'label': name, 'value': int(team_id)}
+    for team_id, name in zip(df_team_stats['team_id'], df_team_stats['name'])
 ]
 
-# Liste des types de statistiques (Offensif / Défensif / Possession)
 stat_types = [
     {'label': "Offensif", 'value': "offensif"},
     {'label': "Défensif", 'value': "defensif"},
     {'label': "Possession", 'value': "possession"}
 ]
 
-# Contenu de l'onglet Team Stats
+# ----------------------------------------------------------------
+# 2. Layout
+# ----------------------------------------------------------------
+
 layout = html.Div([
     html.Div([
-        html.H3("Statistiques des Équipes", style={'display': 'inline-block', 'margin-right': '20px'}),
-
+        html.H3("Statistiques des Équipes",
+                style={'display': 'inline-block', 'margin-right': '20px'}),
         dcc.Dropdown(
             id="stat-type-dropdown",
             options=stat_types,
-            value="offensif",
+            value="offensif",    # default
             clearable=False,
             style={'width': '200px', 'display': 'inline-block', 'verticalAlign': 'middle'}
         ),
-
         dcc.Dropdown(
             id="team-dropdown",
             options=team_options,
@@ -102,80 +108,213 @@ layout = html.Div([
             searchable=True,
             style={'width': '300px', 'display': 'inline-block', 'verticalAlign': 'middle'}
         ),
-
         dcc.Checklist(
             id="toggle-names",
             options=[{"label": "👁 Afficher les noms des équipes", "value": "show"}],
-            value=["show"],  # Par défaut, les noms sont affichés
+            value=["show"],
             style={'margin-left': '20px', 'margin-bottom': '10px'}
         )
     ], style={'display': 'flex', 'alignItems': 'center'}),
 
+    # Two graphs side by side
     html.Div([
         dcc.Graph(id="scatter-graph-1", style={'width': '48%', 'display': 'inline-block'}),
         dcc.Graph(id="scatter-graph-2", style={'width': '48%', 'display': 'inline-block'})
-    ])
+    ]),
+
+    # Two tables side by side (one for each graph)
+    html.Div([
+        html.Div(id="table-1",
+                 style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+        html.Div(id="table-2",
+                 style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'})
+    ], style={'marginTop': '20px'})
 ])
 
-# Callback pour mettre à jour les graphiques dynamiquement
+# ----------------------------------------------------------------
+# 3. Helper Functions
+# ----------------------------------------------------------------
+
+def build_table(df, top_n=3):
+    """
+    Sort df by 'ratio' desc, take top_n, return an html.Table.
+    """
+    df_top = df.sort_values("ratio", ascending=False).head(top_n)
+    return html.Table(
+        [
+            html.Thead(html.Tr([html.Th("Équipe"), html.Th("Ratio")])),
+            html.Tbody([
+                html.Tr([
+                    html.Td(row["name"]),
+                    html.Td(f"{row['ratio']:.2f}")
+                ])
+                for _, row in df_top.iterrows()
+            ])
+        ],
+        style={
+            "width": "100%",
+            "textAlign": "center",
+            "border": "1px solid black",
+            "marginTop": "10px"
+        }
+    )
+
+# ----------------------------------------------------------------
+# 4. Callback
+# ----------------------------------------------------------------
+
 @callback(
-    [Output("scatter-graph-1", "figure"), Output("scatter-graph-2", "figure")],
-    [Input("team-dropdown", "value"), Input("stat-type-dropdown", "value"), Input("toggle-names", "value")]
+    [
+        Output("scatter-graph-1", "figure"),
+        Output("scatter-graph-2", "figure"),
+        Output("table-1", "children"),
+        Output("table-2", "children")
+    ],
+    [
+        Input("team-dropdown", "value"),
+        Input("stat-type-dropdown", "value"),
+        Input("toggle-names", "value")
+    ]
 )
 def update_graphs(selected_team, stat_type, show_names):
-    show_text = "show" in show_names
-    # Convertir l'équipe sélectionnée en int
+    show_text = ("show" in show_names)
+
+    # Convert selected_team to int if possible
     if selected_team is not None:
         try:
             selected_team = int(selected_team)
         except ValueError:
             selected_team = None
 
-    # Gérer le cas où aucune équipe n'est sélectionnée
-    df_team_stats["highlight"] = df_team_stats["team_id"] == selected_team if selected_team is not None else False
+    # Mark highlight for the selected team
+    df_team_stats["highlight"] = df_team_stats["team_id"] == selected_team if selected_team else False
 
+    # Define the left graph / ratio columns
     if stat_type == "offensif":
-        graph_1 = px.scatter(df_team_stats, x="shots", y="goals_for",
-                             color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
-                             text=df_team_stats["name"] if show_text else None,
-                             title="Relation entre tirs et buts marqués",
-                             labels={"shots": "Nombre total de tirs", "goals_for": "Nombre de buts marqués"},
-                             hover_data=["name", "shots", "goals_for"])
+        # Left graph: Shots vs Goals
+        x_left, y_left = "shots", "goals_for"
+        # Right graph: Possession vs Goals
+        x_right, y_right = "possession", "goals_for"
 
-        graph_2 = px.scatter(df_team_stats, x="possession", y="goals_for",
-                             color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
-                             title="Relation entre possession et buts marqués",
-                             labels={"possession": "Pourcentage de possession", "goals_for": "Nombre de buts marqués"},
-                             hover_data=["name", "possession", "goals_for"])
+        # Build the left figure
+        fig_left = px.scatter(
+            df_team_stats,
+            x=x_left, y=y_left,
+            color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
+            text=df_team_stats["name"] if show_text else None,
+            title="Relation entre tirs et buts marqués",
+            labels={x_left: "Nombre total de tirs", y_left: "Nombre de buts marqués"},
+            hover_data=["name", x_left, y_left]
+        )
+
+        # Build the right figure
+        fig_right = px.scatter(
+            df_team_stats,
+            x=x_right, y=y_right,
+            color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
+            text=df_team_stats["name"] if show_text else None,
+            title="Relation entre possession et buts marqués",
+            labels={x_right: "Pourcentage de possession", y_right: "Nombre de buts marqués"},
+            hover_data=["name", x_right, y_right]
+        )
+
+        # Compute ratio for the left graph
+        df_temp_left = df_team_stats.copy()
+        df_temp_left["ratio"] = df_temp_left.apply(
+            lambda row: row[y_left]/row[x_left] if row[x_left] != 0 else 0, axis=1
+        )
+
+        # Compute ratio for the right graph
+        df_temp_right = df_team_stats.copy()
+        df_temp_right["ratio"] = df_temp_right.apply(
+            lambda row: row[y_right]/row[x_right] if row[x_right] != 0 else 0, axis=1
+        )
 
     elif stat_type == "defensif":
-        graph_1 = px.scatter(df_team_stats, x="fouls_committed", y="total_cards",
-                             color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
-                             text=df_team_stats["name"] if show_text else None,
-                             title="Fautes commises vs Nombre total de cartons",
-                             labels={"fouls_committed": "Nombre de fautes", "total_cards": "Total des cartons"},
-                             hover_data=["name", "fouls_committed", "yellow_cards_for", "red_cards_for"])
+        # Left graph: Fouls vs Total Cards
+        x_left, y_left = "fouls_committed", "total_cards"
+        # Right graph: Tackles vs Goals Against
+        x_right, y_right = "tackles_committed", "goals_against"
 
-        graph_2 = px.scatter(df_team_stats, x="tackles_committed", y="goals_against",
-                             color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
-                             text=df_team_stats["name"] if show_text else None,
-                             title="Tacles réalisés vs Buts concédés",
-                             labels={"tackles_committed": "Total des tacles", "goals_against": "Buts concédés"},
-                             hover_data=["name", "tackles_committed", "goals_against"])
+        # Build the left figure
+        fig_left = px.scatter(
+            df_team_stats,
+            x=x_left, y=y_left,
+            color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
+            text=df_team_stats["name"] if show_text else None,
+            title="Fautes commises vs Nombre total de cartons",
+            labels={x_left: "Nombre de fautes", y_left: "Total des cartons"},
+            hover_data=["name", x_left, "yellow_cards_for", "red_cards_for"]
+        )
 
-    else:
-        graph_1 = px.scatter(df_team_stats, x="passes_fwd", y="passes_bwd",
-                             color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
-                             text=df_team_stats["name"] if show_text else None,
-                             title="Passes en avant vs Passes en retrait",
-                             labels={"passes_fwd": "Passes en avant", "passes_bwd": "Passes en retrait"},
-                             hover_data=["name", "passes_fwd", "passes_bwd"])
+        # Build the right figure
+        fig_right = px.scatter(
+            df_team_stats,
+            x=x_right, y=y_right,
+            color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
+            text=df_team_stats["name"] if show_text else None,
+            title="Tacles réalisés vs Buts concédés",
+            labels={x_right: "Total des tacles", y_right: "Buts concédés"},
+            hover_data=["name", x_right, y_right]
+        )
 
-        graph_2 = px.scatter(df_team_stats, x="aerial_challenges", y="aerial_challenges_successful",
-                             color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
-                             text=df_team_stats["name"] if show_text else None,
-                             title="Duels aériens remportés vs Duels aériens totaux",
-                             labels={"aerial_challenges": "Duels aériens", "aerial_challenges_successful": "Duels gagnés"},
-                             hover_data=["name", "aerial_challenges", "aerial_challenges_successful"])
+        # Compute ratio for the left graph
+        df_temp_left = df_team_stats.copy()
+        df_temp_left["ratio"] = df_temp_left.apply(
+            lambda row: row[y_left]/row[x_left] if row[x_left] != 0 else 0, axis=1
+        )
 
-    return graph_1, graph_2
+        # Compute ratio for the right graph
+        # Let's define ratio = tackles_committed / (goals_against + 1)
+        df_temp_right = df_team_stats.copy()
+        df_temp_right["ratio"] = df_temp_right.apply(
+            lambda row: row[x_right]/(row[y_right] + 1), axis=1
+        )
+
+    else:  # "possession" or anything else
+        # Left graph: Passes Forward vs Passes Backward
+        x_left, y_left = "passes_fwd", "passes_bwd"
+        # Right graph: Aerial Challenges vs Aerial Challenges Successful
+        x_right, y_right = "aerial_challenges", "aerial_challenges_successful"
+
+        # Build the left figure
+        fig_left = px.scatter(
+            df_team_stats,
+            x=x_left, y=y_left,
+            color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
+            text=df_team_stats["name"] if show_text else None,
+            title="Passes en avant vs Passes en retrait",
+            labels={x_left: "Passes en avant", y_left: "Passes en retrait"},
+            hover_data=["name", x_left, y_left]
+        )
+
+        # Build the right figure
+        fig_right = px.scatter(
+            df_team_stats,
+            x=x_right, y=y_right,
+            color=df_team_stats["highlight"].map({True: "red", False: "blue"}),
+            text=df_team_stats["name"] if show_text else None,
+            title="Duels aériens remportés vs Duels aériens totaux",
+            labels={x_right: "Duels aériens", y_right: "Duels gagnés"},
+            hover_data=["name", x_right, y_right]
+        )
+
+        # Compute ratio for the left graph
+        df_temp_left = df_team_stats.copy()
+        # e.g. ratio = passes_fwd / (passes_bwd + 1)
+        df_temp_left["ratio"] = df_temp_left.apply(
+            lambda row: row[x_left]/(row[y_left] + 1), axis=1
+        )
+
+        # Compute ratio for the right graph
+        df_temp_right = df_team_stats.copy()
+        # e.g. ratio = aerial_challenges_successful / (aerial_challenges + 1)
+        df_temp_right["ratio"] = df_temp_right.apply(
+            lambda row: row[y_right]/(row[x_right] + 1), axis=1
+        )
+
+    # Build the two separate tables
+    table_left = build_table(df_temp_left)
+    table_right = build_table(df_temp_right)
+
+    return fig_left, fig_right, table_left, table_right
