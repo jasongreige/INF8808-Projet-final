@@ -1,0 +1,22 @@
+.custom-tabs-container {
+    background-color: #f2f5fa;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+.custom-tab {
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    padding: 10px;
+    border: none;
+    color: #333;
+    background-color: transparent;
+}
+
+.custom-tab--selected {
+    background-color: #2C4F8E !important;
+    color: white !important;
+    border-radius: 8px;
+    font-weight: bold;
+}
