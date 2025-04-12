@@ -113,13 +113,33 @@ layout = html.Div([
             options=[{"label": "👁 Afficher les noms des équipes", "value": "show"}],
             value=["show"],
             style={'margin-left': '20px', 'margin-bottom': '10px'}
+        ),
+        dcc.Checklist(
+            id="toggle-quadrants",
+            options=[{"label": "➕ Afficher les quadrants", "value": "show"}],
+            value=[],
+            style={'margin-left': '20px', 'margin-bottom': '10px'}
+        ),
+
+        dcc.Dropdown(
+            id="gender-filter",
+            options=[
+                {'label': 'Équipes masculines', 'value': 'M'},
+                {'label': 'Équipes féminines', 'value': 'F'}
+            ],
+            value='M',
+            clearable=False,
+            style={'width': '200px', 'margin-left': '20px'}
         )
     ], style={'display': 'flex', 'alignItems': 'center'}),
 
     # Two graphs side by side
     html.Div([
-        dcc.Graph(id="scatter-graph-1", style={'width': '48%', 'display': 'inline-block'}),
-        dcc.Graph(id="scatter-graph-2", style={'width': '48%', 'display': 'inline-block'})
+        # dcc.Graph(id="scatter-graph-1", style={'width': '48%', 'display': 'inline-block'}),
+        # dcc.Graph(id="scatter-graph-2", style={'width': '48%', 'display': 'inline-block'})
+        dcc.Graph(id="scatter-graph-1", style={'width': '48%', 'height': '600px', 'display': 'inline-block', 'marginRight': '4%'}),
+        dcc.Graph(id="scatter-graph-2", style={'width': '48%', 'height': '600px', 'display': 'inline-block'})
+
     ]),
 
     # Two tables side by side
@@ -159,6 +179,36 @@ def build_table(df, top_n=3):
         }
     )
 
+def drawing_quadrants(fig, df, x_col, y_col):
+    """
+    Adds dashed quadrant lines to the given figure based on the midpoint
+    of the x and y columns of the DataFrame.
+
+    Parameters:
+    - fig: the Plotly figure object (e.g., fig_left)
+    - df: the DataFrame containing the data
+    - x_col: name of the column used for the x-axis
+    - y_col: name of the column used for the y-axis
+    """
+    mid_x = df[x_col].mean()
+    mid_y = df[y_col].mean()
+
+    fig.add_shape(
+        type="line",
+        x0=mid_x, x1=mid_x,
+        y0=0, y1=1,
+        line=dict(color="gray", width=0.5, dash="dash"),
+        xref="x", yref="paper"  # extend full vertical height
+    )
+    fig.add_shape(
+        type="line",
+        x0=0, x1=1,
+        y0=mid_y, y1=mid_y,
+        line=dict(color="gray", width=0.5, dash="dash"),
+        xref="paper", yref="y"  # extend full horizontal width
+    )
+
+
 # ----------------------------------------------------------------
 # 4. Callback
 # ----------------------------------------------------------------
@@ -168,19 +218,27 @@ def build_table(df, top_n=3):
         Output("scatter-graph-1", "figure"),
         Output("scatter-graph-2", "figure"),
         Output("table-1", "children"),
-        Output("table-2", "children")
+        Output("table-2", "children"),
+        Output("team-dropdown", "options"),
     ],
     [
         Input("team-dropdown", "value"),
         Input("stat-type-dropdown", "value"),
-        Input("toggle-names", "value")
+        Input("toggle-names", "value"),
+        Input("gender-filter", "value"),
+        Input("toggle-quadrants", "value"),
+
     ]
 )
-def update_graphs(selected_team, stat_type, show_names):
+def update_graphs(selected_team, stat_type, show_names, gender_filter, show_quadrants):
+
     show_text = "show" in show_names
+    draw_quadrants = "show" in show_quadrants
 
     # Always work on a local copy to avoid modifying the global DataFrame
     df = df_team_stats.copy()
+    if gender_filter in ["M", "F"]:
+        df = df[df["name"].str.endswith(gender_filter)]
 
     # Convert selected_team to int if possible
     if selected_team is not None:
@@ -188,6 +246,8 @@ def update_graphs(selected_team, stat_type, show_names):
             selected_team = int(selected_team)
         except ValueError:
             selected_team = None
+
+
 
     # Explicitly set the highlight based on whether selected_team is None or not
     if selected_team is None:
@@ -210,9 +270,15 @@ def update_graphs(selected_team, stat_type, show_names):
             text=df["name"] if show_text else None,
             title="Relation entre tirs et buts marqués",
             labels={x_left: "Nombre total de tirs", y_left: "Nombre de buts marqués"},
-            hover_data=["name", x_left, y_left]
+            hover_data=["name", x_left, y_left],
+
         )
         fig_left.update_traces(marker=dict(color=colors))
+        fig_left.update_traces(
+            marker=dict(color=colors),
+            textposition="top center",
+            textfont=dict(size=8)
+        )
 
         fig_right = px.scatter(
             df,
@@ -223,6 +289,11 @@ def update_graphs(selected_team, stat_type, show_names):
             hover_data=["name", x_right, y_right]
         )
         fig_right.update_traces(marker=dict(color=colors))
+        fig_right.update_traces(
+            marker=dict(color=colors),
+            textposition="top center",
+            textfont=dict(size=8)
+        )
 
         df_temp_left = df.copy()
         df_temp_left["ratio"] = df_temp_left.apply(
@@ -232,6 +303,9 @@ def update_graphs(selected_team, stat_type, show_names):
         df_temp_right["ratio"] = df_temp_right.apply(
             lambda row: row[y_right] / row[x_right] if row[x_right] != 0 else 0, axis=1
         )
+        if draw_quadrants:
+            drawing_quadrants(fig_left, df, x_left, y_left)
+            drawing_quadrants(fig_right, df, x_right, y_right)
 
     elif stat_type == "defensif":
         # Left graph: Fouls vs Total Cards
@@ -258,6 +332,16 @@ def update_graphs(selected_team, stat_type, show_names):
             hover_data=["name", x_right, y_right]
         )
         fig_right.update_traces(marker=dict(color=colors))
+        fig_left.update_traces(
+            marker=dict(color=colors),
+            textposition="top center",
+            textfont=dict(size=5)
+        )
+        fig_right.update_traces(
+            marker=dict(color=colors),
+            textposition="top center",
+            textfont=dict(size=8)
+        )
 
         df_temp_left = df.copy()
         df_temp_left["ratio"] = df_temp_left.apply(
@@ -267,6 +351,9 @@ def update_graphs(selected_team, stat_type, show_names):
         df_temp_right["ratio"] = df_temp_right.apply(
             lambda row: row[x_right] / (row[y_right] + 1), axis=1
         )
+        if draw_quadrants:
+            drawing_quadrants(fig_left, df, x_left, y_left)
+            drawing_quadrants(fig_right, df, x_right, y_right)
 
     else:  # "possession" or any other category
         # Left graph: Passes Forward vs Passes Backward
@@ -302,8 +389,28 @@ def update_graphs(selected_team, stat_type, show_names):
         df_temp_right["ratio"] = df_temp_right.apply(
             lambda row: row[y_right] / (row[x_right] + 1), axis=1
         )
+        fig_left.update_traces(
+            marker=dict(color=colors),
+            textposition="top center",
+            textfont=dict(size=6)
+        )
+        fig_right.update_traces(
+            marker=dict(color=colors),
+            textposition="top left",
+            textfont=dict(size=6)
+        )
+        if draw_quadrants:
+            drawing_quadrants(fig_left, df, x_left, y_left)
+            drawing_quadrants(fig_right, df, x_right, y_right)
 
     table_left = build_table(df_temp_left)
     table_right = build_table(df_temp_right)
 
-    return fig_left, fig_right, table_left, table_right
+
+    # Build filtered team options based on gender
+    filtered_team_options = [{'label': "Aucune sélection", 'value': None}] + [
+        {'label': name, 'value': int(team_id)}
+        for team_id, name in zip(df["team_id"], df["name"])
+    ]
+
+    return fig_left, fig_right, table_left, table_right, filtered_team_options
