@@ -5,7 +5,8 @@ from dash import dash_table
 from matchs_table import df_resultats, df_match_stats
 from matchs_table import layout as matchs_table_layout
 from display_match import generate_score_table, generate_match_details
-
+from display_player_stats import update_player_table, display_player_info
+from player_stats import layout as player_stats_layout
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 server = app.server  # Important pour Flask
@@ -56,10 +57,7 @@ def update_tab(tab_name):
     if tab_name == "team_stats":
         return team_stats_layout  # On affiche l'onglet Team Stats
     elif tab_name == "player_stats":
-        return html.Div([
-            html.H3("Statistiques des Joueurs"),
-            html.P("Contenu à ajouter ici...")
-        ])
+        return player_stats_layout
     elif tab_name == "matchs":
         return matchs_table_layout
     return html.Div("Sélectionnez un onglet.")
@@ -67,7 +65,7 @@ def update_tab(tab_name):
 if __name__ == "__main__":
     app.run_server(debug=True)
 
-################### Callback match
+################### Callback match ###############
 
 @app.callback(
     dash.Output("filtered-table", "children"),
@@ -84,3 +82,22 @@ def update_table(equipe):
 )
 def update_details(selected_rows, equipe):
     return generate_match_details(df_resultats, df_match_stats, selected_rows, equipe)
+
+################## Callback player stats #########
+
+@app.callback(
+    dash.Output('player-table', 'children'),
+    [dash.Input('mode-dropdown', 'value'), dash.Input('league-dropdown', 'value'), dash.Input('player-search', 'value')],
+    [dash.State('stored-player-id', 'data')]
+)
+def callback_update_player_table(mode, league, search_value, stored_player_id):
+    return update_player_table(mode, league, search_value, stored_player_id)
+
+@app.callback(
+    [dash.Output('player-info', 'children'), dash.Output('player-histograms', 'children')],
+    [dash.Input('table', 'selected_rows'), dash.Input('mode-dropdown', 'value')],
+    [dash.State('table', 'data')]
+)
+def callback_display_player_info(selected_rows, mode, table_data):
+    return display_player_info(selected_rows, mode, table_data)
+

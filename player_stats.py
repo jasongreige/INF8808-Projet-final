@@ -4,7 +4,7 @@ import pandas as pd
 
 
 # Charger les données depuis Excel
-file_path = "assets\data\L1QC.xlsx"
+file_path = "data/L1QC.xlsx" 
 df_players = pd.read_excel(file_path, sheet_name="players")
 df_players_season = pd.read_excel(file_path, sheet_name="players_season")
 df_players_game = pd.read_excel(file_path, sheet_name="players_game")
@@ -354,30 +354,7 @@ league_options = [
     {'label': 'Feminine', 'value': 'feminine'}
 ]
 
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
-server = app.server  # Important pour Flask
-
-# Définition des onglets et de la mise en page
-app.layout = html.Div([
-    html.H1("Soccer Stats Québec"),
-    dcc.Tabs(id="tabs", value="team_stats", children=[
-        dcc.Tab(label="Matchs", value="matchs"),
-        dcc.Tab(label="Statistiques des Équipes", value="team_stats"),
-        dcc.Tab(label="Statistiques des Joueurs", value="player_stats"),
-    ]),
-    html.Div(id="tabs-content")
-])
-
-# Callback pour afficher le bon contenu selon l'onglet sélectionné
-@app.callback(
-    Output("tabs-content", "children"),
-    [Input("tabs", "value")]
-)
-def update_tab(tab_name):
-    if tab_name == "team_stats":
-        return team_stats_layout  # On affiche l'onglet Team Stats
-    elif tab_name == "player_stats":
-        return html.Div([
+layout = html.Div([
             dcc.Store(id='stored-player-id'),
             html.H3("Statistiques des Joueurs", style={'font-size': '20px'}),
             html.Div([
@@ -412,121 +389,3 @@ def update_tab(tab_name):
                 html.Div(id='player-histograms', style={'width': '70%', 'display': 'inline-block', 'verticalAlign': 'top'})
             ], style={'width': '100%', 'display': 'inline-block', 'verticalAlign': 'top', 'height': '50vh'})
         ])
-    elif tab_name == "matchs":
-        return html.Div([
-            html.H3("Matchs"),
-            html.P("Calendrier des matchs à afficher ici...")
-        ])
-    return html.Div("Sélectionnez un onglet.")
-
-@app.callback(
-    Output('player-table', 'children'),
-    [Input('mode-dropdown', 'value'), Input('league-dropdown', 'value'), Input('player-search', 'value')],
-    [State('stored-player-id', 'data')]
-)
-def update_table(mode, league, search_value, stored_player_id):
-    df = pd.read_excel(f'{MODES[mode]["dataframe"]}.xlsx')
-    if mode != 'general':
-        df = merge_with_general(df, df_general_stats)
-    df = filter_by_league(df, league)
-    
-    # Renommer les colonnes
-    df = df.rename(columns={
-        'player_id': 'Matricule',
-        'season': 'Saison',
-        'player': 'Joueur',
-        'position_played': 'Position',
-        'number_of_starting': 'Titularisations',
-        'team': 'Équipe',
-        'total_minutes': 'Temps de jeu (minutes)',
-        'goals_and_assists': 'Buts et passes décisives',
-        'shots_total': 'Tirs',
-        'passes_total': 'Passes',
-        'total_interceptions': 'Interceptions',
-        'fouls_committed': 'Fautes',
-        'yellow_cards': 'Cartons jaune',
-        'red_cards': 'Cartons rouge',
-        'precision_shots_(%)': 'Réussite tirs (%)',
-        'precision_dribbles_(%)': 'Réussite dribbles (%)',
-        'challenges_(%)': 'Réussite duels (%)',
-        'shots_blocked': 'Tirs bloqués',
-        'aerial_challenges_(%)': 'Réussite duels aériens (%)',
-        'clearances_(%)': 'Réussite dégagements (%)',
-        'tackles_(%)': 'Réussite tacles (%)',
-        'gk_clearances_(%)': 'Réussite dégagements (%)'
-    })
-    
-    if search_value:
-        df = df[df['Joueur'].str.contains(search_value, case=False, na=False)]
-    
-    return html.Div([
-        html.H3(f'Tableau des statistiques', style={'font-size': '20px'}),
-        dash_table.DataTable(
-            id='table',
-            columns=[{'name': col.replace('_', ' '), 'id': col} for col in df.columns],
-            data=df.to_dict('records'),
-            style_table={'width': '100%', 'overflowX': 'auto'},
-            style_cell={'textAlign': 'left', 'whiteSpace': 'normal', 'height': 'auto'},
-            row_selectable='single',
-            selected_rows=[]
-        )
-    ], style={'textAlign': 'center', 'width': '100%'})
-
-@app.callback(
-    [Output('player-info', 'children'), Output('player-histograms', 'children')],
-    [Input('table', 'selected_rows'), Input('mode-dropdown', 'value')],
-    [State('table', 'data')]
-)
-def display_player_info(selected_rows, mode, table_data):
-    if not selected_rows:
-        return html.Div(), html.Div()
-    
-    player_index = selected_rows[0]
-    df = pd.DataFrame(table_data)
-    
-    # Assurer que l'index est correctement configuré
-    if player_index >= len(df):
-        return html.Div(), html.Div()
-    
-    player_data = df.iloc[player_index]
-
-    # Récupérer l'équipe du joueur à partir du tableau Général si elle n'est pas renseignée
-    if mode != 'general' and ('Équipe' not in player_data or pd.isna(player_data['Équipe'])):
-        general_df = pd.read_excel('df_general_stats.xlsx')
-        general_player_data = general_df[general_df['player_id'] == player_data['Matricule']]
-        if not general_player_data.empty:
-            player_data['Équipe'] = general_player_data['team'].values[0]
-
-    # Récupérer le poste du joueur à partir du tableau Général si elle n'est pas renseignée
-    if mode != 'general' and ('Position' not in player_data or pd.isna(player_data['Position'])):
-        general_df = pd.read_excel('df_general_stats.xlsx')
-        general_player_data = general_df[general_player_data['player_id'] == player_data['Matricule']]
-        if not general_player_data.empty:
-            player_data['Position'] = general_player_data['position_played'].values[0]
-
-    player_info = html.Div([
-        html.H3("Fiche Joueur"),
-        html.P(f"Nom: {player_data.get('Joueur', 'N/A')}"),
-        html.P(f"Équipe: {player_data.get('Équipe', 'N/A')}"),
-        html.P(f"Poste: {player_data.get('Position', 'N/A')}")
-    ])
-
-    histograms = []
-    if mode == 'attack':
-        histograms = create_offensive_histograms(player_data['Matricule'])
-    elif mode == 'defense':
-        histograms = create_defensive_histograms(player_data['Matricule'])
-    elif mode == 'goalkeeper':
-        histograms = create_goalkeeper_histograms(player_data['Matricule'])
-    elif mode == 'general':
-        histograms = create_general_histograms(player_data['Matricule'])
-    else:
-        histograms = []  # Pas d'histogrammes pour les modes Masculine et Féminine
-
-    # Créer la mise en page des histogrammes en fonction du nombre d'histogrammes disponibles
-    histogram_layout = html.Div([
-        html.Div(dcc.Graph(figure=histogram), style={'width': '50%', 'display': 'inline-block'})
-        for histogram in histograms
-    ], style={'width': '100%', 'display': 'flex', 'flex-wrap': 'wrap'})
-
-    return player_info, histogram_layout
