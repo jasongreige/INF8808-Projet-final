@@ -12,12 +12,56 @@ from player_stats import (
     df_general_stats
 )
 
+#======================================================================
+#                      Barres %                                       #
+#======================================================================
+
+def generate_percentage_gradient_styles(df, percent_columns):
+    styles = []
+    for col in percent_columns:
+        if col not in df.columns:
+            continue
+        values = pd.to_numeric(df[col], errors='coerce')
+        min_val, max_val = values.min(), values.max()
+        avg_val = values.mean()
+
+        for i, val in enumerate(values):
+            if pd.isna(val):
+                continue
+            normalized = (val - min_val) / (max_val - min_val) if max_val > min_val else 0
+            # Créer un bleu progressif
+            blue_intensity = int(255 - normalized * 120)  # 255 -> 135
+            bg_color = f"rgb({blue_intensity}, {blue_intensity}, 255)"
+            styles.append({
+                'if': {
+                    'filter_query': f'{{{col}}} = {val}',
+                    'column_id': col
+                },
+                'backgroundColor': bg_color,
+                'color': 'black'
+            })
+    return styles
+
+def create_bar_column(df, column, color="#2C4F8E"):  #afficher avec barre bleue
+    max_val = df[column].max()
+    
+    def render_bar(value):
+        percent = (value / max_val) * 100 if max_val != 0 else 0
+        return f'<div style="width: 100%; background-color: #e0e0e0; border-radius: 3px;"><div style="width: {percent:.1f}%; background-color: {color}; padding: 2px 4px; border-radius: 3px; color: white; font-size: 11px; font-weight: bold; text-align: right;">{value}</div></div>'
+
+    
+    df[column] = df[column].fillna(0).astype(int).apply(render_bar)
+    return df
+
+
 def update_player_table(mode, league, search_value, stored_player_id):
-    df = pd.read_excel(f'{MODES[mode]["dataframe"]}.xlsx')
+    df_raw = pd.read_excel(f'{MODES[mode]["dataframe"]}.xlsx')
+    df = df_raw.copy()
+
     if mode != 'general':
         df = merge_with_general(df, df_general_stats)
     df = filter_by_league(df, league)
-    
+
     df = df.rename(columns={
         'player_id': 'Matricule',
         'season': 'Saison',
@@ -26,7 +70,7 @@ def update_player_table(mode, league, search_value, stored_player_id):
         'number_of_starting': 'Titularisations',
         'team': 'Équipe',
         'total_minutes': 'Temps de jeu (minutes)',
-        'goals_and_assists': 'Buts et passes décisives',
+        'goals_and_assists': 'Buts+Passes décisives',
         'shots_total': 'Tirs',
         'passes_total': 'Passes',
         'total_interceptions': 'Interceptions',
@@ -40,20 +84,79 @@ def update_player_table(mode, league, search_value, stored_player_id):
         'aerial_challenges_(%)': 'Réussite duels aériens (%)',
         'clearances_(%)': 'Réussite dégagements (%)',
         'tackles_(%)': 'Réussite tacles (%)',
-        'gk_clearances_(%)': 'Réussite dégagements (%)'
+        'gk_clearances_(%)': 'Réussite dégagements (%)',
+        'precision_passes_(%)': 'Réussite passes (%)'
     })
+
+    # Colonnes à masquer
+    colonnes_visibles = [col for col in df.columns if col not in ["Saison", "Matricule"]]
 
     if search_value:
         df = df[df['Joueur'].str.contains(search_value, case=False, na=False)]
 
+    # Liste des colonnes %
+    percent_cols = [
+        'Réussite tirs (%)', 'Réussite dribbles (%)', 'Réussite duels (%)',
+        'Réussite duels aériens (%)', 'Réussite dégagements (%)',
+        'Réussite tacles (%)', 'Réussite passes (%)'
+    ]
+
+    # === 1. Génération des styles AVANT de convertir en %
+    style_conditional = generate_percentage_gradient_styles(df, [col for col in percent_cols if col in df.columns])
+
+    # === 2. Copie pour affichage formaté
+    df_display = df.copy()
+
+    for col in percent_cols:
+        if col in df_display.columns:
+            df_display[col] = df_display[col].apply(lambda x: f"{int(round(x))}%" if pd.notnull(x) else "–")
+
+    # Barres uniquement sur la version affichée
+    for col in ['Tirs', 'Passes', 'Buts+Passes décisives', 'Interceptions']:
+        if col in df_display.columns:
+            df_display = create_bar_column(df_display, col)
+
+    # === DataTable
     return html.Div([
-        html.H3('Tableau des statistiques', style={'font-size': '20px'}),
+        html.H3('Tableau des statistiques intéractif', style={'font-size': '20px'}),
         dash_table.DataTable(
             id='table',
-            columns=[{'name': col, 'id': col} for col in df.columns],
-            data=df.to_dict('records'),
-            style_table={'width': '100%', 'overflowX': 'auto'},
-            style_cell={'textAlign': 'left', 'whiteSpace': 'normal', 'height': 'auto'},
+            columns=[{'name': col, 'id': col, 'presentation': 'markdown'} for col in colonnes_visibles],
+            data=df_display.to_dict('records'),
+            markdown_options={"html": True},
+            style_table={
+                'maxHeight': '800px',
+                'width': '100%',
+                'borderRadius': '8px',
+                'boxShadow': '0 2px 6px rgba(0,0,0,0.1)',
+                'border': '1px solid #ccc'
+            },
+            style_cell={
+                'textAlign': 'center',
+                'whiteSpace': 'normal',
+                'height': 'auto',
+                'fontFamily': 'Arial, sans-serif',
+                'fontSize': '14px',
+                'padding': '8px',
+                'minWidth': '120px',
+                'width': '90px',
+                'maxWidth': '120px',
+                'borderRight': '1px solid #ccc',
+                'borderLeft': '1px solid #ccc'
+            },
+            style_data={
+                'backgroundColor': 'white',
+                'borderBottom': '1px solid #ddd',
+            },
+            style_header={
+                'backgroundColor': '#eef4fb',
+                'fontWeight': 'bold',
+                'textAlign': 'center',
+                'fontSize': '15px',
+                'borderBottom': '2px solid #bbb',
+                'borderTop': '2px solid #bbb'
+            },
+            style_data_conditional=style_conditional,
             row_selectable='single',
             selected_rows=[]
         )
