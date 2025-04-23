@@ -383,7 +383,7 @@ layout = html.Div([
                     dcc.Input(id='player-search', type='text', placeholder='Saisir le Nom du Joueur', style={'width': '300px', 'display': 'inline-block', 'verticalAlign': 'middle'})
                 ], style={'width': '40%', 'display': 'inline-block', 'verticalAlign': 'middle'})
             ], style={'width': '100%', 'display': 'flex', 'justify-content': 'space-between', 'align-items': 'center'}),
-            html.Div(id='player-table', style={'width': '100%', 'display': 'inline-block', 'verticalAlign': 'top', 'height': '50vh', 'overflowY': 'scroll'}),
+            html.Div(id='player-table', style={'width': '100%', 'display': 'inline-block', 'verticalAlign': 'top', 'minHeight': '650px'}),
             html.Div([
                 html.Div(id='player-info', style={'width': '30%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                 html.Div(id='player-histograms', style={'width': '70%', 'display': 'inline-block', 'verticalAlign': 'top'})
