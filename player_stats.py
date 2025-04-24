@@ -19,11 +19,6 @@ df_players_game = df_players_game.merge(df_players_season[['id', 'season']], lef
 # Associer les noms d'équipe aux stats des joueurs
 df_players_season = df_players_season.merge(df_teams[['id', 'name']], left_on='team_id', right_on='id', how='left')
 
-
-# Afficher les colonnes pour vérifier
-print(df_players_game.columns)
-print(df_players_season.columns)
-
 # Supprimer les colonnes inutiles
 if 'id_y' in df_players_game.columns:
     df_players_game.drop(columns=['id_y'], inplace=True)
@@ -283,25 +278,25 @@ MODES = {
         'histograms': [
             {'column': 'goals_and_assists', 'title': 'Distribution des buts + passes décisives'},
             {'column': 'passes_total', 'title': 'Distribution des passes totales'},
-            {'column': 'precision_dribbles_(%)', 'title': 'Distribution des précisions de dribbles (%)'},
-            {'column': 'challenges_(%)', 'title': 'Distribution des challenges offensifs (%)'}
+            {'column': 'precision_dribbles_(%)', 'title': 'Distribution % de réussite des dribbles'},
+            {'column': 'challenges_(%)', 'title': 'Distribution % de réussite des challenges offensifs'}
         ]
     },
     'defense': {
         'name': 'Défense',
         'dataframe': 'df_defensive_stats',
         'histograms': [
-            {'column': 'tackles_(%)', 'title': 'Distribution du % de tacles'},
-            {'column': 'challenges_(%)', 'title': 'Distribution du % de challenges défensifs'},
+            {'column': 'tackles_(%)', 'title': 'Distribution du % de réussite des tacles'},
+            {'column': 'challenges_(%)', 'title': 'Distribution du % de réussite challenges défensifs'},
             {'column': 'total_interceptions', 'title': 'Distribution du nombre total d\'interceptions'},
-            {'column': 'aerial_challenges_(%)', 'title': 'Distribution des challenges aériens défensifs (%)'}
+            {'column': 'aerial_challenges_(%)', 'title': 'Distribution % de réussite des challenges aériens défensifs'}
         ]
     },
     'goalkeeper': {
         'name': 'Gardien',
         'dataframe': 'df_goalkeeper_stats',
         'histograms': [
-            {'column': 'gk_clearances_(%)', 'title': 'Distribution du % de dégagements'}
+            {'column': 'gk_clearances_(%)', 'title': 'Distribution du % de réussite des dégagements'}
         ]
     },
     'general': {
@@ -383,7 +378,7 @@ layout = html.Div([
                     dcc.Input(id='player-search', type='text', placeholder='Saisir le Nom du Joueur', style={'width': '300px', 'display': 'inline-block', 'verticalAlign': 'middle'})
                 ], style={'width': '40%', 'display': 'inline-block', 'verticalAlign': 'middle'})
             ], style={'width': '100%', 'display': 'flex', 'justify-content': 'space-between', 'align-items': 'center'}),
-            html.Div(id='player-table', style={'width': '100%', 'display': 'inline-block', 'verticalAlign': 'top', 'minHeight': '650px'}),
+            html.Div(id='player-table', style={'width': '100%', 'display': 'inline-block', 'verticalAlign': 'top', 'height': '50vh', 'overflowY': 'scroll'}),
             html.Div([
                 html.Div(id='player-info', style={'width': '30%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                 html.Div(id='player-histograms', style={'width': '70%', 'display': 'inline-block', 'verticalAlign': 'top'})
